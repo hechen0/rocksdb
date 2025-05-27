@@ -2455,11 +2455,13 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
 
   uint64_t bytes_compact_to_next_level = 0;
   uint64_t level_size = 0;
+  // hn level0直接引用 全部加和
   for (auto* f : files_[0]) {
     level_size += f->fd.GetFileSize();
   }
   // Level 0
   bool level0_compact_triggered = false;
+  // hn level0 超过 文件个数(level0_file_num_compaction_trigger=4) 或 层数最大size(Options.max_bytes_for_level_base: 536870912(512MB))
   if (static_cast<int>(files_[0].size()) >=
           mutable_cf_options.level0_file_num_compaction_trigger ||
       level_size >= mutable_cf_options.max_bytes_for_level_base) {
@@ -2510,6 +2512,9 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
       }
       if (bytes_next_level > 0) {
         assert(level_size > 0);
+        // hn 这个估算值代表啥？(当前层超出部分) × (下一层总大小 / 当前层总大小 + 1)
+        //  如果下一层越大，估算参与compaction的规模就越大，反之则越趋近于0，取值范围[1, 无穷]，也就是说一层堆积越多
+        //  compaction到下一层就需要下一层更多的文件参与，极端情况下下一层所有文件都需要参与，总体compaction规模会增加
         estimated_compaction_needed_bytes_ += static_cast<uint64_t>(
             static_cast<double>(bytes_compact_to_next_level) *
             (static_cast<double>(bytes_next_level) /
